@@ -8,8 +8,14 @@ import time
 import base64
 from datetime import datetime, timedelta
 
-# Configuración de página (Debe ir antes de cualquier otro elemento visual)
-st.set_page_config(page_title="Gestión de Inversionistas", layout="wide")
+# =========================================================================
+# ⚙️ CONFIGURACIÓN DE LA PÁGINA (Tu logo de Opciones Financieras en la pestaña y links)
+# =========================================================================
+st.set_page_config(
+    page_title="Gestión de Inversionistas", 
+    layout="wide",
+    page_icon="Logo_Negro.png"  # Aquí asignamos el icono oficial de fondo negro
+)
 
 # =========================================================================
 # 📦 CAJA FUERTE Y LOGIN DE SEGURIDAD (EN LA PANTALLA PRINCIPAL)
