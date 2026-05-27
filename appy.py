@@ -8,7 +8,34 @@ import time
 import base64
 from datetime import datetime, timedelta
 
+# Configuración de página (Debe ir antes de cualquier otro elemento visual)
 st.set_page_config(page_title="Gestión de Inversionistas", layout="wide")
+
+# =========================================================================
+# 📦 CAJA FUERTE Y LOGIN DE SEGURIDAD (AL PURO PRINCIPIO)
+# =========================================================================
+# Leer secretos guardados de forma segura en Streamlit Cloud
+AZURE_CONNECTION_STRING = st.secrets["AZURE_CONNECTION_STRING"]
+PASSWORD_ADMIN = st.secrets["ADMIN_PASSWORD"]
+PASSWORD_SOCIO = st.secrets["SOCIO_PASSWORD"]
+
+st.sidebar.title("🔑 Acceso al Fondo")
+user_password = st.sidebar.text_input("Introduce la contraseña de acceso:", type="password")
+
+# Validación estricta antes de renderizar la app
+if user_password == PASSWORD_ADMIN:
+    es_admin = True
+    st.sidebar.success("Modo: Administrador")
+elif user_password == PASSWORD_SOCIO:
+    es_admin = False
+    st.sidebar.success("Modo: Inversionista (Lectura)")
+    st.sidebar.info("Visualizando rendimiento en tiempo real. Modo de edición deshabilitado.")
+else:
+    if user_password != "":
+        st.sidebar.error("❌ Contraseña incorrecta")
+    st.warning("🔒 Por favor, introduce una contraseña válida en la barra lateral para visualizar el estado del fondo.")
+    st.stop()  # Detiene por completo la ejecución si no hay contraseña correcta
+
 
 # =========================================================================
 # 🎬 PANTALLA DE BIENVENIDA (8 SEGUNDOS EXACTOS)
@@ -90,9 +117,6 @@ if 'bienvenida_completada' not in st.session_state:
 # =========================================================================
 # 📊 CONTROL, RECONSTRUCCIÓN Y PREVENCIÓN DE ERRORES DE BASE DE DATOS
 # =========================================================================
-
-st.sidebar.header("🔑 Configuración de Conexión Nube")
-AZURE_CONNECTION_STRING = st.sidebar.text_input("Cadena de Conexión Azure:", value="", type="password")
 CONTAINER_NAME = "datos-fondo"
 
 datos_apertura_nueva_semana = [
@@ -120,7 +144,6 @@ def cargar_desde_storage(nombre_archivo, datos_defecto):
             if blob_client.exists():
                 descarga = blob_client.download_blob()
                 datos_leidos = descarga.readall()
-                # BLINDAJE: Si el archivo existe pero está vacío, evitar el KeyError inyectando la estructura por defecto
                 if len(datos_leidos) == 0:
                     df_resultado = pd.DataFrame(datos_defecto)
                 else:
@@ -569,311 +592,337 @@ def generar_pdf_reporte(dataframe_vis, identificador_semana, df_live_num, df_fin
 
 
 # =========================================================================
-# ⚙️ PANEL LATERAL (CONTROLES DE ENTRADA Y FORMULARIOS)
+# ⚙️ VISTA CONDICIONAL DEL PANEL LATERAL (SOLO ADMINISTRADOR)
 # =========================================================================
 st.sidebar.markdown("---")
-st.sidebar.header("👥 Inversionistas")
 
-with st.sidebar.expander("➕ Incluir Socio"):
-    with st.form(key="formulario_registro", clear_on_submit=True):
-        nuevo_nombre = st.text_input("Nombre de Socio").upper().strip()
-        capital_inicial = st.number_input("Capital Acumulado Histórico ($)", min_value=0.0, format="%.2f")
-        saldo_inicial_real = st.number_input("Saldo Inicial Apertura ($)", min_value=0.0, format="%.2f")
-        if st.form_submit_button("Registrar Socio"):
-            if nuevo_nombre and nuevo_nombre not in df_inv['INVERSIONISTA'].values:
-                nueva_fila = pd.DataFrame([{
-                    'INVERSIONISTA': nuevo_nombre, 
-                    'CAPITAL ACUMULADO': round(capital_inicial, 2), 
-                    'SALDO INICIAL': round(saldo_inicial_real, 2), 
-                    'FECHA_LUNES': fecha_lunes_str
-                }])
-                df_inv = pd.concat([df_inv, nueva_fila], ignore_index=True)
+if es_admin:
+    st.sidebar.header("👥 Inversionistas (Admin)")
+
+    with st.sidebar.expander("➕ Incluir Socio"):
+        with st.form(key="formulario_registro", clear_on_submit=True):
+            nuevo_nombre = st.text_input("Nombre de Socio").upper().strip()
+            capital_inicial = st.number_input("Capital Acumulado Histórico ($)", min_value=0.0, format="%.2f")
+            saldo_inicial_real = st.number_input("Saldo Inicial Apertura ($)", min_value=0.0, format="%.2f")
+            if st.form_submit_button("Registrar Socio"):
+                if nuevo_nombre and nuevo_nombre not in df_inv['INVERSIONISTA'].values:
+                    nueva_fila = pd.DataFrame([{
+                        'INVERSIONISTA': nuevo_nombre, 
+                        'CAPITAL ACUMULADO': round(capital_inicial, 2), 
+                        'SALDO INICIAL': round(saldo_inicial_real, 2), 
+                        'FECHA_LUNES': fecha_lunes_str
+                    }])
+                    df_inv = pd.concat([df_inv, nueva_fila], ignore_index=True)
+                    guardar_en_storage(df_inv, 'inversionistas.csv')
+                    st.success(f"Socio {nuevo_nombre} registrado correctamente.")
+                    st.rerun()
+
+    with st.sidebar.expander("🗑️ Eliminar Socio"):
+        opciones_remover = ["-- Seleccionar --"] + df_inv['INVERSIONISTA'].tolist()
+        socio_a_eliminar = st.selectbox("Seleccione socio a remover:", opciones_remover)
+        if socio_a_eliminar != "-- Seleccionar --":
+            if st.button(f"Confirmar Eliminación de {socio_a_eliminar}", type="primary"):
+                df_inv = df_inv[df_inv['INVERSIONISTA'] != socio_a_eliminar]
                 guardar_en_storage(df_inv, 'inversionistas.csv')
-                st.success(f"Socio {nuevo_nombre} registrado correctamente.")
+                st.success(f"Socio {socio_a_eliminar} removido.")
                 st.rerun()
 
-with st.sidebar.expander("🗑️ Eliminar Socio"):
-    opciones_remover = ["-- Seleccionar --"] + df_inv['INVERSIONISTA'].tolist()
-    socio_a_eliminar = st.selectbox("Seleccione socio a remover:", opciones_remover)
-    if socio_a_eliminar != "-- Seleccionar --":
-        if st.button(f"Confirmar Eliminación de {socio_a_eliminar}", type="primary"):
-            df_inv = df_inv[df_inv['INVERSIONISTA'] != socio_a_eliminar]
-            guardar_en_storage(df_inv, 'inversionistas.csv')
-            st.success(f"Socio {socio_a_eliminar} removido.")
-            st.rerun()
-
-st.sidebar.markdown("---")
-st.sidebar.markdown("### **Saldo Real de la Cuenta**") 
-
-# El input siempre se inicializa en 0.0 al cargar la app o refrescar
-saldo_cierre_mercado = st.sidebar.number_input(
-    "💵 Saldo de Cuenta", 
-    label_visibility="collapsed", 
-    min_value=0.0, 
-    value=0.0, 
-    format="%.2f"
-)
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### **Saldo Real de la Cuenta**") 
+    saldo_cierre_mercado = st.sidebar.number_input(
+        "💵 Saldo de Cuenta", 
+        label_visibility="collapsed", 
+        min_value=0.0, 
+        value=0.0, 
+        format="%.2f"
+    )
+else:
+    # Si ingresa un socio, forzamos el saldo a 0.0 para que se calcule con el histórico del lunes
+    saldo_cierre_mercado = 0.0
 
 st.sidebar.markdown("---")
 st.sidebar.header("📂 Históricos de Reportes")
 opciones_semana = ["Semana Activa (En Curso)"] + sorted(list(df_hist['SEMANA'].unique())) if not df_hist.empty else ["Semana Activa (En Curso)"]
 semana_seleccionada = st.sidebar.selectbox("Seleccione período a auditar:", opciones_semana)
 
-st.sidebar.markdown("---")
-st.sidebar.header("📂 Depósitos / Retiros")
-
+# Inicialización de diccionarios de movimientos en sesión
 if 'depositos_dict' not in st.session_state:
     st.session_state.depositos_dict = {nom: 0.0 for nom in df_inv['INVERSIONISTA'].values}
 if 'retiros_dict' not in st.session_state:
     st.session_state.retiros_dict = {nom: 0.0 for nom in df_inv['INVERSIONISTA'].values}
 
-with st.sidebar.expander("📥 Registrar Movimientos"):
-    socio_seleccionado = st.selectbox("Inversionista para movimientos:", df_inv['INVERSIONISTA'].values)
-    st.session_state.depositos_dict[socio_seleccionado] = st.number_input("Monto Depósito ($)", min_value=0.0, value=st.session_state.depositos_dict.get(socio_seleccionado, 0.0), format="%.2f", key=f"i_dep_{socio_seleccionado}")
-    st.session_state.retiros_dict[socio_seleccionado] = st.number_input("Monto Retiro ($)", min_value=0.0, value=st.session_state.retiros_dict.get(socio_seleccionado, 0.0), format="%.2f", key=f"i_ret_{socio_seleccionado}")
+if es_admin:
+    st.sidebar.markdown("---")
+    st.sidebar.header("📂 Depósitos / Retiros")
+    with st.sidebar.expander("📥 Registrar Movimientos"):
+        socio_seleccionado = st.selectbox("Inversionista para movimientos:", df_inv['INVERSIONISTA'].values)
+        st.session_state.depositos_dict[socio_seleccionado] = st.number_input("Monto Depósito ($)", min_value=0.0, value=st.session_state.depositos_dict.get(socio_seleccionado, 0.0), format="%.2f", key=f"i_dep_{socio_seleccionado}")
+        st.session_state.retiros_dict[socio_seleccionado] = st.number_input("Monto Retiro ($)", min_value=0.0, value=st.session_state.retiros_dict.get(socio_seleccionado, 0.0), format="%.2f", key=f"i_ret_{socio_seleccionado}")
 
 
 # =========================================================================
-# 🔥 OPERACIÓN DE CIERRE AUTOMÁTICO DE SEMANA
+# 🔥 OPERACIÓN DE CIERRE AUTOMÁTICO DE SEMANA (SOLO ADMINISTRADOR)
 # =========================================================================
-if st.sidebar.button("💾 Guardar y Cerrar Semana Definitivamente"):
-    saldo_inicial_global = round(df_inv['SALDO INICIAL'].sum(), 2)
-    saldo_final_esperado = saldo_inicial_global if saldo_cierre_mercado == 0.0 else saldo_cierre_mercado
-    ganancia_global_mercado = round(saldo_final_esperado - saldo_inicial_global, 2)
+if es_admin:
+    if st.sidebar.button("💾 Guardar y Cerrar Semana Definitivamente"):
+        saldo_inicial_global = round(df_inv['SALDO INICIAL'].sum(), 2)
+        saldo_final_esperado = saldo_inicial_global if saldo_cierre_mercado == 0.0 else saldo_cierre_mercado
+        ganancia_global_mercado = round(saldo_final_esperado - saldo_inicial_global, 2)
+        
+        ganancias_teoricas = ganancia_global_mercado * (df_inv['SALDO INICIAL'] / saldo_inicial_global)
+        ganancias_redondeadas = ganancias_teoricas.round(2)
+        
+        diferencia_remanente = round(ganancia_global_mercado - ganancias_redondeadas.sum(), 2)
+        if diferencia_remanente != 0:
+            idx_ajuste = (ganancias_teoricas - ganancias_redondeadas).abs().idxmax()
+            ganancias_redondeadas.at[idx_ajuste] = round(ganancias_redondeadas.at[idx_ajuste] + diferencia_remanente, 2)
+
+        filas_nuevas_historico = []
+        for index, row in df_inv.iterrows():
+            nom_i = row['INVERSIONISTA']
+            cap_a = row['CAPITAL ACUMULADO']
+            s_ini = row['SALDO INICIAL']
+            p_ini = round((s_ini / saldo_inicial_global) * 100, 2)
+            
+            g_p = ganancias_redondeadas.at[index]
+            s_fin = round(s_ini + g_p, 2)
+            
+            dep_m = round(st.session_state.depositos_dict.get(nom_i, 0.0), 2)
+            ret_m = round(st.session_state.retiros_dict.get(nom_i, 0.0), 2)
+            
+            s_act = round(s_fin + dep_m - ret_m, 2)
+            cap_a_nuevo = round(cap_a + dep_m - ret_m, 2)
+            
+            filas_nuevas_historico.append({
+                'SEMANA': semana_actual_label,
+                'INVERSIONISTA': nom_i,
+                'CAPITAL ACUMULADO': cap_a,
+                'SALDO INICIAL': s_ini,
+                'PART_INICIAL': p_ini,
+                'SALDO FINAL': s_fin,
+                'GANANCIA / PERDIDA': g_p,
+                'DEPOSITOS': dep_m,
+                'RETIROS': ret_m,
+                'SALDO ACTUAL': s_act,
+                'PART_FINAL': 0.0
+            })
+            
+            df_inv.at[index, 'SALDO INICIAL'] = s_act
+            df_inv.at[index, 'CAPITAL ACUMULADO'] = cap_a_nuevo
+
+        df_nuevas_h = pd.DataFrame(filas_nuevas_historico)
+        saldo_actual_global = df_nuevas_h['SALDO ACTUAL'].sum()
+        for idx, r_h in df_nuevas_h.iterrows():
+            df_nuevas_h.at[idx, 'PART_FINAL'] = round((r_h['SALDO ACTUAL'] / saldo_actual_global) * 100, 2)
+
+        df_hist = pd.concat([df_hist, df_nuevas_h], ignore_index=True)
+        
+        nueva_fecha_lunes = (lunes_actual + timedelta(days=7)).strftime('%Y-%m-%d')
+        df_inv['FECHA_LUNES'] = nueva_fecha_lunes
+        
+        guardar_en_storage(df_inv, 'inversionistas.csv')
+        guardar_en_storage(df_hist, 'historico_semanal.csv')
+        
+        st.session_state.depositos_dict = {nom: 0.0 for nom in df_inv['INVERSIONISTA'].values}
+        st.session_state.retiros_dict = {nom: 0.0 for nom in df_inv['INVERSIONISTA'].values}
+        
+        st.success("🔒 Semana cerrada de forma definitiva y base de datos guardada en la nube con éxito.")
+        st.rerun()
+
+
+# =========================================================================
+# 📊 PROCESAMIENTO Y RENDERIZADO VISUAL (COMPARTIDO POR AMBOS MODOS)
+# =========================================================================
+if semana_seleccionada == "Semana Activa (En Curso)":
+    saldo_inicial_total = df_inv['SALDO INICIAL'].sum()
     
-    ganancias_teoricas = ganancia_global_mercado * (df_inv['SALDO INICIAL'] / saldo_inicial_global)
+    # Lógica de cálculo en vivo
+    df_live = df_inv.copy()
+    df_live['% PARTICIPACION'] = ((df_live['SALDO INICIAL'] / saldo_inicial_total) * 100).round(2)
+    
+    saldo_mercado_efectivo = saldo_inicial_total if saldo_cierre_mercado == 0.0 else saldo_cierre_mercado
+    ganancia_total_mercado = saldo_mercado_efectivo - saldo_inicial_total
+    
+    ganancias_teoricas = ganancia_total_mercado * (df_live['SALDO INICIAL'] / saldo_inicial_total)
     ganancias_redondeadas = ganancias_teoricas.round(2)
-    
-    diferencia_remanente = round(ganancia_global_mercado - ganancias_redondeadas.sum(), 2)
-    if diferencia_remanente != 0:
+    diferencia_remanente = round(ganancia_total_mercado - ganancias_redondeadas.sum(), 2)
+    if diferencia_remanente != 0 and len(ganancias_redondeadas) > 0:
         idx_ajuste = (ganancias_teoricas - ganancias_redondeadas).abs().idxmax()
         ganancias_redondeadas.at[idx_ajuste] = round(ganancias_redondeadas.at[idx_ajuste] + diferencia_remanente, 2)
-
-    nuevos_registros = []
-    for i, inv in df_inv.iterrows():
-        nom = inv['INVERSIONISTA']
-        part_inicial_ratio = inv['SALDO INICIAL'] / saldo_inicial_global if saldo_inicial_global > 0 else 0.0
-        
-        gan_ind = ganancias_redondeadas.iloc[i]
-        sal_final_sem = round(inv['SALDO INICIAL'] + gan_ind, 2)
-        
-        dep = st.session_state.depositos_dict.get(nom, 0.0)
-        ret = st.session_state.retiros_dict.get(nom, 0.0)
-        
-        saldo_actual_calculado = round(sal_final_sem + dep - ret, 2)
-        
-        nuevos_registros.append({
-            'SEMANA': semana_actual_label, 'INVERSIONISTA': nom, 'CAPITAL ACUMULADO': inv['CAPITAL ACUMULADO'],
-            'SALDO INICIAL': round(inv['SALDO INICIAL'], 2), 'PART_INICIAL': round(part_inicial_ratio * 100, 2),
-            'SALDO FINAL': sal_final_sem, 'GANANCIA / PERDIDA': gan_ind,
-            'DEPOSITOS': round(dep, 2), 'RETIROS': round(ret, 2), 'SALDO ACTUAL': saldo_actual_calculado, 'PART_FINAL': 0.0
-        })
-        
-    tot_sal_actual = sum(r['SALDO ACTUAL'] for r in nuevos_registros)
-    nueva_fecha_lunes = lunes_actual + timedelta(days=7)
-    nueva_fecha_lunes_str = nueva_fecha_lunes.strftime('%Y-%m-%d')
-
-    for i, r in enumerate(nuevos_registros):
-        r['PART_FINAL'] = round((r['SALDO ACTUAL'] / tot_sal_actual * 100), 2) if tot_sal_actual > 0 else 0.0
-        df_inv.at[i, 'SALDO INICIAL'] = r['SALDO ACTUAL']
-        df_inv.at[i, 'FECHA_LUNES'] = nueva_fecha_lunes_str
-        
-    df_hist = pd.concat([df_hist[df_hist['SEMANA'] != semana_actual_label], pd.DataFrame(nuevos_registros)], ignore_index=True)
     
-    guardar_en_storage(df_hist, 'historico_semanal.csv')
-    guardar_en_storage(df_inv, 'inversionistas.csv')
+    df_live['SALDO FINAL'] = (df_live['SALDO INICIAL'] + ganancias_redondeadas).round(2)
+    df_live['GANANCIA / PERDIDA'] = ganancias_redondeadas
     
-    for nom in df_inv['INVERSIONISTA'].values:
-        st.session_state.depositos_dict[nom] = 0.0
-        st.session_state.retiros_dict[nom] = 0.0
-        
-    for key in list(st.session_state.keys()):
-        if key.startswith("i_dep_") or key.startswith("i_ret_"):
-            st.session_state[key] = 0.0
-
-    st.success(f"🎉 ¡Semana cerrada con éxito! Proyección operativa: Lunes {nueva_fecha_lunes.strftime('%d-%m-%Y')}.")
-    time.sleep(1)
-    st.rerun()
-
-
-# =========================================================================
-# 🎛️ DESPLIEGUE DEL DASHBOARD CENTRAL
-# =========================================================================
-if semana_seleccionada != "Semana Activa (En Curso)":
-    st.markdown(f"<div style='text-align:center;'><span style='background-color:#e2e8f0; color:#475569; padding:6px 16px; border-radius:20px; font-weight:bold; font-size:14px;'>📂 HISTÓRICO SELECCIONADO: {semana_seleccionada}</span></div><br>", unsafe_allow_html=True)
-    df_filtrado = df_hist[df_hist['SEMANA'] == semana_seleccionada]
+    m_deps = [round(st.session_state.depositos_dict.get(n, 0.0), 2) for n in df_live['INVERSIONISTA'].values]
+    m_rets = [round(st.session_state.retiros_dict.get(n, 0.0), 2) for n in df_live['INVERSIONISTA'].values]
+    df_live['DEPOSITOS'] = m_deps
+    df_live['RETIROS'] = m_rets
     
-    df_vis_hist = pd.DataFrame()
-    df_vis_hist['INVERSIONISTA'] = df_filtrado['INVERSIONISTA']
-    df_vis_hist['CAPITAL ACUMULADO'] = df_filtrado['CAPITAL ACUMULADO'].apply(formatear_moneda)
-    df_vis_hist['SALDO INICIAL'] = df_filtrado['SALDO INICIAL'].apply(formatear_moneda)
-    df_vis_hist['% PARTICIPACION'] = df_filtrado['PART_INICIAL'].map('{:.2f}%'.format)
-    df_vis_hist['SALDO FINAL'] = df_filtrado['SALDO FINAL'].apply(formatear_moneda)
-    df_vis_hist['GANANCIA / PERDIDA'] = df_filtrado['GANANCIA / PERDIDA'].apply(formatear_moneda)
-    df_vis_hist['DEPOSITOS'] = df_filtrado['DEPOSITOS'].apply(formatear_moneda)
-    df_vis_hist['RETIROS'] = df_filtrado['RETIROS'].apply(formatear_moneda)
-    df_vis_hist['SALDO ACTUAL'] = df_filtrado['SALDO ACTUAL'].apply(formatear_moneda)
-    df_vis_hist['% PARTICIPACION FIN'] = df_filtrado['PART_FINAL'].map('{:.2f}%'.format)
+    df_live['SALDO ACTUAL'] = (df_live['SALDO FINAL'] + df_live['DEPOSITOS'] - df_live['RETIROS']).round(2)
     
-    total_saldo_actual_hist = df_filtrado['SALDO ACTUAL'].sum()
+    saldo_actual_global_live = df_live['SALDO ACTUAL'].sum()
+    df_live['% PARTICIPACION FIN'] = ((df_live['SALDO ACTUAL'] / saldo_actual_global_live) * 100).round(2)
     
-    fila_tot_hist = pd.DataFrame([{
-        'INVERSIONISTA': 'TOTAL FONDO', 'CAPITAL ACUMULADO': f"${df_filtrado['CAPITAL ACUMULADO'].sum():,.2f}",
-        'SALDO INICIAL': f"${df_filtrado['SALDO INICIAL'].sum():,.2f}", '% PARTICIPACION': '100.00%',
-        'SALDO FINAL': f"${df_filtrado['SALDO FINAL'].sum():,.2f}", 'GANANCIA / PERDIDA': f"${df_filtrado['GANANCIA / PERDIDA'].sum():,.2f}",
-        'DEPOSITOS': f"${df_filtrado['DEPOSITOS'].sum():,.2f}", 'RETIROS': f"${df_filtrado['RETIROS'].sum():,.2f}",
-        'SALDO ACTUAL': f"${total_saldo_actual_hist:,.2f}", '% PARTICIPACION FIN': '100.00%'
+    # Fila de Totales
+    total_cap_ac = df_live['CAPITAL ACUMULADO'].sum()
+    total_s_ini = df_live['SALDO INICIAL'].sum()
+    total_s_fin = df_live['SALDO FINAL'].sum()
+    total_g_p = df_live['GANANCIA / PERDIDA'].sum()
+    total_dep = df_live['DEPOSITOS'].sum()
+    total_ret = df_live['RETIROS'].sum()
+    total_s_act = df_live['SALDO ACTUAL'].sum()
+    
+    fila_total = pd.DataFrame([{
+        'INVERSIONISTA': 'TOTAL FONDO', 'CAPITAL ACUMULADO': total_cap_ac, 'SALDO INICIAL': total_s_ini,
+        '% PARTICIPACION': 100.0, 'SALDO FINAL': total_s_fin, 'GANANCIA / PERDIDA': total_g_p,
+        'DEPOSITOS': total_dep, 'RETIROS': total_ret, 'SALDO ACTUAL': total_s_act, '% PARTICIPACION FIN': 100.0
     }])
+    df_live_tabla = pd.concat([df_live, fila_total], ignore_index=True)
     
-    df_final_despliegue_hist = pd.concat([df_vis_hist, fila_tot_hist], ignore_index=True)
-    st.markdown(convertir_df_a_html_estilizado(df_final_despliegue_hist, es_tabla_resumen=False), unsafe_allow_html=True)
+    # Formateo de cadenas para visualización HTML
+    df_vis = df_live_tabla.copy()
+    columnas_dinero = ['CAPITAL ACUMULADO', 'SALDO INICIAL', 'SALDO FINAL', 'GANANCIA / PERDIDA', 'DEPOSITOS', 'RETIROS', 'SALDO ACTUAL']
+    for c in columnas_dinero:
+        df_vis[c] = df_vis[c].apply(formatear_moneda)
+    df_vis['% PARTICIPACION'] = df_vis['% PARTICIPACION'].apply(lambda x: f"{x:.2f}%")
+    df_vis['% PARTICIPACION FIN'] = df_vis['% PARTICIPACION FIN'].apply(lambda x: f"{x:.2f}%")
     
-    df_res_hist = pd.DataFrame()
-    df_res_hist['INVERSIONISTA'] = df_filtrado['INVERSIONISTA']
-    df_res_hist['CAPITAL BASE HISTORICO'] = df_filtrado['CAPITAL ACUMULADO'].apply(formatear_moneda)
-    df_res_hist['SALDO ACTUALIZADO'] = df_filtrado['SALDO ACTUAL'].apply(formatear_moneda)
-    
-    g_hist_tot = df_filtrado['SALDO ACTUAL'] - df_filtrado['CAPITAL ACUMULADO']
-    df_res_hist['GANANCIA HISTORICA TOTAL'] = g_hist_tot.apply(formatear_moneda)
-    df_res_hist['RETORNO (ROI)'] = (g_hist_tot / df_filtrado['CAPITAL ACUMULADO'] * 100).fillna(0.0).map('{:.2f}%'.format)
-    
-    fila_tot_res_hist = pd.DataFrame([{
-        'INVERSIONISTA': 'TOTAL FONDO', 'CAPITAL BASE HISTORICO': f"${df_filtrado['CAPITAL ACUMULADO'].sum():,.2f}",
-        'SALDO ACTUALIZADO': f"${total_saldo_actual_hist:,.2f}", 'GANANCIA HISTORICA TOTAL': f"${(total_saldo_actual_hist - df_filtrado['CAPITAL ACUMULADO'].sum()):,.2f}",
-        'RETORNO (ROI)': f"{((total_saldo_actual_hist - df_filtrado['CAPITAL ACUMULADO'].sum()) / df_filtrado['CAPITAL ACUMULADO'].sum() * 100):,.2f}%"
-    }])
-    df_final_res_hist = pd.concat([df_res_hist, fila_tot_res_hist], ignore_index=True)
-    
-    st.markdown(f'<h3 class="titulo-tabla-centrado">Consolidado Histórico Semanal</h3>', unsafe_allow_html=True)
-    st.markdown(convertir_df_a_html_estilizado(df_final_res_hist, es_tabla_resumen=True), unsafe_allow_html=True)
-    
-    fig_bar_current = generar_grafico_barras_dinamico(total_saldo_actual_hist)
-    pdf_data = generar_pdf_reporte(df_final_despliegue_hist, semana_seleccionada, df_filtrado, df_final_res_hist, f"Consolidado a: {semana_seleccionada}", saldo_grafico_mayo=total_saldo_actual_hist)
-    if pdf_data:
-        st.download_button(label=f"📥 Descargar PDF Histórico: {semana_seleccionada}", data=pdf_data, file_name=f"Reporte_{semana_seleccionada.replace(' ', '_')}.pdf", mime="application/pdf", use_container_width=True)
-
-else:
-    st.markdown(f"<div style='text-align:center;'><span style='background-color:#d1fae5; color:#065f46; padding:6px 16px; border-radius:20px; font-weight:bold; font-size:14px;'>⚡ PERÍODO ACTIVO: Semana del {semana_actual_label}</span></div><br>", unsafe_allow_html=True)
-    
-    saldo_inicial_global_live = round(df_inv['SALDO INICIAL'].sum(), 2) 
-    
-    # Sincronización exacta espejo si no has colocado ningún valor superior a cero
-    if saldo_cierre_mercado == 0.00:
-        saldo_dinamico_mercado = saldo_inicial_global_live
-    else:
-        saldo_dinamico_mercado = saldo_cierre_mercado
-        
-    ganancia_global_live = round(saldo_dinamico_mercado - saldo_inicial_global_live, 2) 
-    
-    df_inv['PART_INICIAL_RATIO'] = df_inv['SALDO INICIAL'] / saldo_inicial_global_live
-    df_inv['GANANCIA_TEORICA'] = ganancia_global_live * df_inv['PART_INICIAL_RATIO']
-    df_inv['GANANCIA / PERDIDA'] = df_inv['GANANCIA_TEORICA'].round(2)
-    
-    diferencia_exacta_centavos = round(ganancia_global_live - df_inv['GANANCIA / PERDIDA'].sum(), 2)
-    if diferencia_exacta_centavos != 0:
-        idx_ajuste_centavo = (df_inv['GANANCIA_TEORICA'] - df_inv['GANANCIA / PERDIDA']).abs().idxmax()
-        df_inv.at[idx_ajuste_centavo, 'GANANCIA / PERDIDA'] = round(df_inv.at[idx_ajuste_centavo, 'GANANCIA / PERDIDA'] + diferencia_exacta_centavos, 2)
-        
-    lista_filas_live = []
-    for i, row in df_inv.iterrows():
-        nom = row['INVERSIONISTA']
-        p_ini = row['PART_INICIAL_RATIO'] * 100
-        g_ind = row['GANANCIA / PERDIDA']
-        
-        lista_filas_live.append({
-            'INVERSIONISTA': nom, 
-            'CAPITAL ACUMULADO': row['CAPITAL ACUMULADO'], 
-            'SALDO INICIAL': row['SALDO INICIAL'],
-            '% PARTICIPACION': p_ini, 
-            'SALDO FINAL': round(row['SALDO INICIAL'] + g_ind, 2), 
-            'GANANCIA / PERDIDA': g_ind,
-            'DEPOSITOS': st.session_state.depositos_dict.get(nom, 0.0), 
-            'RETIROS': st.session_state.retiros_dict.get(nom, 0.0)
-        })
-        
-    df_live_num = pd.DataFrame(lista_filas_live)
-    df_live_num['SALDO ACTUAL'] = round(df_live_num['SALDO FINAL'] + df_live_num['DEPOSITOS'] - df_live_num['RETIROS'], 2)
-    
-    tot_s_actual_live = round(df_live_num['SALDO ACTUAL'].sum(), 2)
-    df_live_num['PART_FINAL'] = (df_live_num['SALDO ACTUAL'] / tot_s_actual_live * 100) if tot_s_actual_live > 0 else 0.0
-
-    # Despliegue de los bloques de la parte superior sincronizados
+    # Tarjetas Métricas Superiores
     st.markdown(
         f"""
         <div class="contenedor-metricas-global">
-            <div class="tarjeta-metrica-custom">
-                <div class="metrica-titulo-custom">💰 SALDO INICIAL TOTAL ({label_lunes_columna.upper()})</div>
-                <div class="metrica-valor-custom">${saldo_inicial_global_live:,.2f}</div>
-            </div>
-            <div class="tarjeta-metrica-custom">
-                <div class="metrica-titulo-custom">📈 SALDO ACTUAL CONSOLIDADO REAL ({label_domingo_columna.upper()})</div>
-                <div class="metrica-valor-custom">${saldo_dinamico_mercado:,.2f}</div>
-            </div>
+            <div class="tarjeta-metrica-custom"><div class="metrica-titulo-custom">Capital Apertura Semana</div><div class="metrica-valor-custom">{formatear_moneda(total_s_ini)}</div></div>
+            <div class="tarjeta-metrica-custom"><div class="metrica-titulo-custom">Valor de Cuenta Actual</div><div class="metrica-valor-custom">{formatear_moneda(total_s_fin)}</div></div>
+            <div class="tarjeta-metrica-custom"><div class="metrica-titulo-custom">Rendimiento Neto de Semana</div><div class="metrica-valor-custom" style="color:{'#0e622b' if total_g_p >= 0 else '#a71d1d'}">{formatear_moneda(total_g_p)}</div></div>
         </div>
-        """,
+        """, 
         unsafe_allow_html=True
     )
     
-    df_vis = pd.DataFrame()
-    df_vis['INVERSIONISTA'] = df_live_num['INVERSIONISTA']
-    df_vis['CAPITAL ACUMULADO'] = df_live_num['CAPITAL ACUMULADO'].apply(formatear_moneda)
-    df_vis['SALDO INICIAL'] = df_live_num['SALDO INICIAL'].apply(formatear_moneda)
-    df_vis['% PARTICIPACION'] = df_live_num['% PARTICIPACION'].map('{:.2f}%'.format)
-    df_vis['SALDO FINAL'] = df_live_num['SALDO FINAL'].apply(formatear_moneda)
-    df_vis['GANANCIA / PERDIDA'] = df_live_num['GANANCIA / PERDIDA'].apply(formatear_moneda)
-    df_vis['DEPOSITOS'] = df_live_num['DEPOSITOS'].apply(formatear_moneda)
-    df_vis['RETIROS'] = df_live_num['RETIROS'].apply(formatear_moneda)
-    df_vis['SALDO ACTUAL'] = df_live_num['SALDO ACTUAL'].apply(formatear_moneda)
-    df_vis['% PARTICIPACION FIN'] = df_live_num['PART_FINAL'].map('{:.2f}%'.format)
+    st.markdown(f"<h3 class='titulo-tabla-centrado'>Estadísticas Consolidadas - {semana_actual_label}</h3>", unsafe_allow_html=True)
+    st.markdown(convertir_df_a_html_estilizado(df_vis, es_tabla_resumen=False), unsafe_allow_html=True)
     
-    fila_tot = pd.DataFrame([{
-        'INVERSIONISTA': 'TOTAL FONDO', 'CAPITAL ACUMULADO': f"${df_inv['CAPITAL ACUMULADO'].sum():,.2f}",
-        'SALDO INICIAL': f"${saldo_inicial_global_live:,.2f}", '% PARTICIPACION': '100.00%',
-        'SALDO FINAL': f"${df_live_num['SALDO FINAL'].sum():,.2f}", 'GANANCIA / PERDIDA': formatear_moneda(ganancia_global_live),
-        'DEPOSITOS': f"${df_live_num['DEPOSITOS'].sum():,.2f}", 'RETIROS': f"${df_live_num['RETIROS'].sum():,.2f}",
-        'SALDO ACTUAL': f"${tot_s_actual_live:,.2f}", '% PARTICIPACION FIN': '100.00%'
+    # Construcción de Matriz Resumen Histórico Dinámico
+    st.markdown("<h3 class='titulo-tabla-centrado'>Resumen de Rendimiento Histórico Acumulado</h3>", unsafe_allow_html=True)
+    
+    df_res_historico = pd.DataFrame(datos_apertura_nueva_semana)
+    df_res_historico['INVERSIONISTA'] = df_res_historico['INVERSIONISTA'].str.strip().str.upper()
+    df_res_historico = df_res_historico[['INVERSIONISTA', 'CAPITAL ACUMULADO']].rename(columns={'CAPITAL ACUMULADO': 'CAPITAL BASE HISTORICO'})
+    
+    # Sincronización exacta de capital histórico para TAGUIRA en el acumulado
+    df_res_historico.loc[df_res_historico['INVERSIONISTA'] == 'TAGUIRA', 'CAPITAL BASE HISTORICO'] = 1814.85
+    
+    df_saldo_actual_map = df_live[['INVERSIONISTA', 'SALDO ACTUAL']].rename(columns={'SALDO ACTUAL': 'SALDO ACTUALIZADO'})
+    df_final_res_live = pd.merge(df_res_historico, df_saldo_actual_map, on='INVERSIONISTA', how='left')
+    
+    df_final_res_live['GANANCIA HISTORICA TOTAL'] = df_final_res_live['SALDO ACTUALIZADO'] - df_final_res_live['CAPITAL BASE HISTORICO']
+    df_final_res_live['RETORNO (ROI)'] = ((df_final_res_live['GANANCIA HISTORICA TOTAL'] / df_final_res_live['CAPITAL BASE HISTORICO']) * 100).round(2)
+    
+    total_res_cap = df_final_res_live['CAPITAL BASE HISTORICO'].sum()
+    total_res_sal = df_final_res_live['SALDO ACTUALIZADO'].sum()
+    total_res_gan = df_final_res_live['GANANCIA HISTORICA TOTAL'].sum()
+    total_res_roi = ((total_res_gan / total_res_cap) * 100).round(2)
+    
+    fila_total_res = pd.DataFrame([{
+        'INVERSIONISTA': 'TOTAL FONDO', 'CAPITAL BASE HISTORICO': total_res_cap, 'SALDO ACTUALIZADO': total_res_sal,
+        'GANANCIA HISTORICA TOTAL': total_res_gan, 'RETORNO (ROI)': total_res_roi
     }])
+    df_final_res_live_tabla = pd.concat([df_final_res_live, fila_total_res], ignore_index=True)
     
-    df_final_despliegue = pd.concat([df_vis, fila_tot], ignore_index=True)
-    st.markdown(convertir_df_a_html_estilizado(df_final_despliegue, es_tabla_resumen=False), unsafe_allow_html=True)
+    df_vis_resumen = df_final_res_live_tabla.copy()
+    cols_resumen_moneda = ['CAPITAL BASE HISTORICO', 'SALDO ACTUALIZADO', 'GANANCIA HISTORICA TOTAL']
+    for c in cols_resumen_moneda:
+        df_vis_resumen[c] = df_vis_resumen[c].apply(formatear_moneda)
+    df_vis_resumen['RETORNO (ROI)'] = df_vis_resumen['RETORNO (ROI)'].apply(lambda x: f"{x:.2f}%")
     
-    df_res_live = pd.DataFrame()
-    df_res_live['INVERSIONISTA'] = df_live_num['INVERSIONISTA']
-    df_res_live['CAPITAL BASE HISTORICO'] = df_live_num['CAPITAL ACUMULADO'].apply(formatear_moneda)
-    df_res_live['SALDO ACTUALIZADO'] = df_live_num['SALDO ACTUAL'].apply(formatear_moneda)
+    st.markdown(convertir_df_a_html_estilizado(df_vis_resumen, es_tabla_resumen=True), unsafe_allow_html=True)
     
-    ganancia_historica_live = df_live_num['SALDO ACTUAL'] - df_live_num['CAPITAL ACUMULADO']
-    df_res_live['GANANCIA HISTORICA TOTAL'] = ganancia_historica_live.apply(formatear_moneda)
-    df_res_live['RETORNO (ROI)'] = (ganancia_historica_live / df_live_num['CAPITAL ACUMULADO'] * 100).fillna(0.0).map('{:.2f}%'.format)
+    # Renderizado de Gráficos de Control de Métricas
+    col_g1, col_g2 = st.columns(2)
+    with col_g1:
+        st.plotly_chart(construir_grafico_pie(df_live), use_container_width=True)
+    with col_g2:
+        st.plotly_chart(generar_grafico_barras_dinamico(total_s_fin), use_container_width=True)
+        
+    # Motor de Despliegue de PDF Auditado
+    st.markdown("---")
+    st.markdown("<h4 style='text-align: center;'>Descarga de Reportes Oficiales</h4>", unsafe_allow_html=True)
     
-    total_cap_base_live = df_live_num['CAPITAL ACUMULADO'].sum()
-    total_ganancia_hist_live = tot_s_actual_live - total_cap_base_live
-    
-    fila_tot_res_live = pd.DataFrame([{
-        'INVERSIONISTA': 'TOTAL FONDO', 'CAPITAL BASE HISTORICO': f"${total_cap_base_live:,.2f}",
-        'SALDO ACTUALIZADO': f"${tot_s_actual_live:,.2f}", 'GANANCIA HISTORICA TOTAL': f"${total_ganancia_hist_live:,.2f}",
-        'RETORNO (ROI)': f"{((total_ganancia_hist_live / total_cap_base_live * 100) if total_cap_base_live > 0 else 0.0):,.2f}%"
-    }])
-    df_final_res_live = pd.concat([df_res_live, fila_tot_res_live], ignore_index=True)
-    
-    titulo_dinamico = "Consolidado Acumulado Integral"
-    st.markdown(f'<h3 class="titulo-tabla-centrado">{titulo_dinamico}</h3>', unsafe_allow_html=True)
-    st.markdown(convertir_df_a_html_estilizado(df_final_res_live, es_tabla_resumen=True), unsafe_allow_html=True)
-    
-    fig_bar_current = generar_grafico_barras_dinamico(tot_s_actual_live)
-    
-    pdf_data = generar_pdf_reporte(df_final_despliegue, semana_actual_label, df_live_num, df_final_res_live, f"Consolidado a: {lunes_actual.strftime('%d-%m-%Y')}", saldo_grafico_mayo=tot_s_actual_live)
-    if pdf_data:
-        st.download_button(label=f"📥 Descargar PDF Oficial: Semana {semana_actual_label}", data=pdf_data, file_name=f"Reporte_Semanal_{semana_actual_label.replace(' ', '_')}.pdf", mime="application/pdf", use_container_width=True)
+    pdf_bytes = generar_pdf_reporte(df_vis, semana_actual_label, df_live, df_vis_resumen, "Resumen de Rendimiento Histórico Acumulado", total_s_fin)
+    if pdf_bytes:
+        col_c_btn = st.columns([1, 2, 1])
+        with col_c_btn[1]:
+            st.download_button(
+                label="📥 Descargar Reporte Completo en PDF",
+                data=pdf_bytes,
+                file_name=f"Reporte_Inversiones_{semana_actual_label.replace(' ', '')}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
 
-# --- GRÁFICOS ANALÍTICOS ---
-st.markdown("---")
-st.markdown("<h3 style='text-align: center;'>📊 Análisis y Métricas Visuales del Fondo</h3>", unsafe_allow_html=True)
-st.markdown("<br>", unsafe_allow_html=True)
-
-if semana_seleccionada == "Semana Activa (En Curso)":
-    st.plotly_chart(construir_grafico_pie(df_live_num), use_container_width=True)
 else:
-    st.plotly_chart(construir_grafico_pie(df_filtrado), use_container_width=True)
-
-st.plotly_chart(fig_bar_current, use_container_width=True)
+    # FILTRO HISTÓRICO AUDITADO (VISTA DE PERIODOS PASADOS)
+    df_hist_filtrado = df_hist[df_hist['SEMANA'] == semana_seleccionada].copy()
+    if not df_hist_filtrado.empty:
+        total_s_ini = df_hist_filtrado['SALDO INICIAL'].sum()
+        total_s_fin = df_hist_filtrado['SALDO FINAL'].sum()
+        total_g_p = df_hist_filtrado['GANANCIA / PERDIDA'].sum()
+        total_cap_ac = df_hist_filtrado['CAPITAL ACUMULADO'].sum()
+        total_dep = df_hist_filtrado['DEPOSITOS'].sum()
+        total_ret = df_hist_filtrado['RETIROS'].sum()
+        total_s_act = df_hist_filtrado['SALDO ACTUAL'].sum()
+        
+        st.markdown(
+            f"""
+            <div class="contenedor-metricas-global">
+                <div class="tarjeta-metrica-custom"><div class="metrica-titulo-custom">Capital Apertura Periodo</div><div class="metrica-valor-custom">{formatear_moneda(total_s_ini)}</div></div>
+                <div class="tarjeta-metrica-custom"><div class="metrica-titulo-custom">Cierre de Cuenta Periodo</div><div class="metrica-valor-custom">{formatear_moneda(total_s_fin)}</div></div>
+                <div class="tarjeta-metrica-custom"><div class="metrica-titulo-custom">Ganancia Neta del Periodo</div><div class="metrica-valor-custom" style="color:{'#0e622b' if total_g_p >= 0 else '#a71d1d'}">{formatear_moneda(total_g_p)}</div></div>
+            </div>
+            """, 
+            unsafe_allow_html=True
+        )
+        
+        st.markdown(f"<h3 class='titulo-tabla-centrado'>Estadísticas Auditadas - Período {semana_seleccionada}</h3>", unsafe_allow_html=True)
+        
+        fila_total_h = pd.DataFrame([{
+            'SEMANA': semana_seleccionada, 'INVERSIONISTA': 'TOTAL FONDO', 'CAPITAL ACUMULADO': total_cap_ac,
+            'SALDO INICIAL': total_s_ini, 'PART_INICIAL': 100.0, 'SALDO FINAL': total_s_fin,
+            'GANANCIA / PERDIDA': total_g_p, 'DEPOSITOS': total_dep, 'RETIROS': total_ret,
+            'SALDO ACTUAL': total_s_act, 'PART_FINAL': 100.0
+        }])
+        df_h_tabla = pd.concat([df_hist_filtrado, fila_total_h], ignore_index=True)
+        
+        df_vis_h = df_h_tabla[['INVERSIONISTA', 'CAPITAL ACUMULADO', 'SALDO INICIAL', 'PART_INICIAL', 'SALDO FINAL', 'GANANCIA / PERDIDA', 'DEPOSITOS', 'RETIROS', 'SALDO ACTUAL', 'PART_FINAL']].copy()
+        df_vis_h.columns = ['INVERSIONISTA', 'CAPITAL ACUMULADO', 'SALDO INICIAL', '% PARTICIPACION', 'SALDO FINAL', 'GANANCIA / PERDIDA', 'DEPOSITOS', 'RETIROS', 'SALDO ACTUAL', '% PARTICIPACION FIN']
+        
+        columnas_dinero = ['CAPITAL ACUMULADO', 'SALDO INICIAL', 'SALDO FINAL', 'GANANCIA / PERDIDA', 'DEPOSITOS', 'RETIROS', 'SALDO ACTUAL']
+        for c in columnas_dinero:
+            df_vis_h[c] = df_vis_h[c].apply(formatear_moneda)
+        df_vis_h['% PARTICIPACION'] = df_vis_h['% PARTICIPACION'].apply(lambda x: f"{x:.2f}%")
+        df_vis_h['% PARTICIPACION FIN'] = df_vis_h['% PARTICIPACION FIN'].apply(lambda x: f"{x:.2f}%")
+        
+        st.markdown(convertir_df_a_html_estilizado(df_vis_h, es_tabla_resumen=False), unsafe_allow_html=True)
+        
+        col_g1, col_g2 = st.columns(2)
+        with col_g1:
+            st.plotly_chart(construir_grafico_pie(df_hist_filtrado), use_container_width=True)
+        with col_g2:
+            st.plotly_chart(generar_grafico_barras_dinamico(total_s_fin), use_container_width=True)
+            
+        st.markdown("---")
+        st.markdown("<h4 style='text-align: center;'>Descarga de Reportes Históricos</h4>", unsafe_allow_html=True)
+        
+        pdf_bytes = generar_pdf_reporte(df_vis_h, semana_seleccionada, df_hist_filtrado, None, "", total_s_fin)
+        if pdf_bytes:
+            col_c_btn = st.columns([1, 2, 1])
+            with col_c_btn[1]:
+                st.download_button(
+                    label=f"📥 Descargar Reporte PDF - Período {semana_seleccionada}",
+                    data=pdf_bytes,
+                    file_name=f"Reporte_Inversiones_{semana_seleccionada.replace(' ', '')}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
+    else:
+        st.warning("No se encontraron registros indexados para el periodo seleccionado.")
