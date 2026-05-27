@@ -12,33 +12,72 @@ from datetime import datetime, timedelta
 st.set_page_config(page_title="Gestión de Inversionistas", layout="wide")
 
 # =========================================================================
-# 📦 CAJA FUERTE Y LOGIN DE SEGURIDAD (AL PURO PRINCIPIO)
+# 📦 CAJA FUERTE Y LOGIN DE SEGURIDAD (EN LA PANTALLA PRINCIPAL)
 # =========================================================================
 # Leer secretos guardados de forma segura en Streamlit Cloud
 AZURE_CONNECTION_STRING = st.secrets["AZURE_CONNECTION_STRING"]
 PASSWORD_ADMIN = st.secrets["ADMIN_PASSWORD"]
 PASSWORD_SOCIO = st.secrets["SOCIO_PASSWORD"]
 
-st.sidebar.title("🔑 Acceso al Fondo")
-user_password = st.sidebar.text_input("Introduce la contraseña de acceso:", type="password")
+# Inicializar estados de sesión para el control de acceso
+if 'autenticado' not in st.session_state:
+    st.session_state.autenticado = False
+if 'es_admin' not in st.session_state:
+    st.session_state.es_admin = False
 
-# Validación estricta antes de renderizar la app
-if user_password == PASSWORD_ADMIN:
-    es_admin = True
-    st.sidebar.success("Modo: Administrador")
-elif user_password == PASSWORD_SOCIO:
-    es_admin = False
-    st.sidebar.success("Modo: Inversionista (Lectura)")
-    st.sidebar.info("Visualizando rendimiento en tiempo real. Modo de edición deshabilitado.")
+# Si no está autenticado, mostramos la pantalla de login centralizada inmediatamente
+if not st.session_state.autenticado:
+    # Ocultar la barra lateral por completo durante el login para evitar distracciones
+    st.markdown(
+        """
+        <style>
+            [data-testid="stSidebar"] {
+                display: none;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center;'>🔒 Acceso Seguro al Fondo</h2>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #6c757d;'>Por favor, introduce tus credenciales para visualizar el estado del fondo en tiempo real.</p>", unsafe_allow_html=True)
+        
+        # Formulario de inicio de sesión directo
+        with st.form(key="login_form"):
+            clave_ingresada = st.text_input("Introduzca una Contraseña Válida:", type="password")
+            boton_aceptar = st.form_submit_button("Aceptar e Ingresar", use_container_width=True)
+            
+            if boton_aceptar:
+                if clave_ingresada == PASSWORD_ADMIN:
+                    st.session_state.autenticado = True
+                    st.session_state.es_admin = True
+                    st.rerun()
+                elif clave_ingresada == PASSWORD_SOCIO:
+                    st.session_state.autenticado = True
+                    st.session_state.es_admin = False
+                    st.rerun()
+                else:
+                    st.error("❌ Contraseña incorrecta. Por favor, inténtalo de nuevo.")
+                    
+        st.stop() # Bloquea el resto de la app hasta que pase el login
+
+# Recuperar el rol del usuario autenticado
+es_admin = st.session_state.es_admin
+
+# Mostrar indicador de modo en la barra lateral una vez adentro
+if es_admin:
+    st.sidebar.success("🔑 Modo: Administrador")
 else:
-    if user_password != "":
-        st.sidebar.error("❌ Contraseña incorrecta")
-    st.warning("🔒 Por favor, introduce una contraseña válida en la barra lateral para visualizar el estado del fondo.")
-    st.stop()  # Detiene por completo la ejecución si no hay contraseña correcta
+    st.sidebar.success("🔑 Modo: Inversionista (Lectura)")
+    st.sidebar.info("Visualizando rendimiento en tiempo real. Modo de edición deshabilitado.")
 
 
 # =========================================================================
-# 🎬 PANTALLA DE BIENVENIDA (8 SEGUNDOS EXACTOS)
+# 🎬 PANTALLA DE BIENVENIDA (8 SEGUNDOS EXACTOS - SOLO TRAS LOGUEARSE)
 # =========================================================================
 if 'bienvenida_completada' not in st.session_state:
 
@@ -592,10 +631,8 @@ def generar_pdf_reporte(dataframe_vis, identificador_semana, df_live_num, df_fin
 
 
 # =========================================================================
-# ⚙️ VISTA CONDICIONAL DEL PANEL LATERAL (SOLO ADMINISTRADOR)
+# ⚙️ BARRA LATERAL (CAMPOS DINÁMICOS EXCLUSIVOS ADMIN / FILTROS)
 # =========================================================================
-st.sidebar.markdown("---")
-
 if es_admin:
     st.sidebar.header("👥 Inversionistas (Admin)")
 
@@ -637,7 +674,6 @@ if es_admin:
         format="%.2f"
     )
 else:
-    # Si ingresa un socio, forzamos el saldo a 0.0 para que se calcule con el histórico del lunes
     saldo_cierre_mercado = 0.0
 
 st.sidebar.markdown("---")
@@ -664,7 +700,7 @@ if es_admin:
 # 🔥 OPERACIÓN DE CIERRE AUTOMÁTICO DE SEMANA (SOLO ADMINISTRADOR)
 # =========================================================================
 if es_admin:
-    if st.sidebar.button("💾 Guardar y Cerrar Semana Definitivamente"):
+    if st.sidebar.button("💾 Guardar y Cerrar Semana Definitivamente", use_container_width=True):
         saldo_inicial_global = round(df_inv['SALDO INICIAL'].sum(), 2)
         saldo_final_esperado = saldo_inicial_global if saldo_cierre_mercado == 0.0 else saldo_cierre_mercado
         ganancia_global_mercado = round(saldo_final_esperado - saldo_inicial_global, 2)
@@ -736,7 +772,6 @@ if es_admin:
 if semana_seleccionada == "Semana Activa (En Curso)":
     saldo_inicial_total = df_inv['SALDO INICIAL'].sum()
     
-    # Lógica de cálculo en vivo
     df_live = df_inv.copy()
     df_live['% PARTICIPACION'] = ((df_live['SALDO INICIAL'] / saldo_inicial_total) * 100).round(2)
     
@@ -763,7 +798,6 @@ if semana_seleccionada == "Semana Activa (En Curso)":
     saldo_actual_global_live = df_live['SALDO ACTUAL'].sum()
     df_live['% PARTICIPACION FIN'] = ((df_live['SALDO ACTUAL'] / saldo_actual_global_live) * 100).round(2)
     
-    # Fila de Totales
     total_cap_ac = df_live['CAPITAL ACUMULADO'].sum()
     total_s_ini = df_live['SALDO INICIAL'].sum()
     total_s_fin = df_live['SALDO FINAL'].sum()
@@ -779,7 +813,6 @@ if semana_seleccionada == "Semana Activa (En Curso)":
     }])
     df_live_tabla = pd.concat([df_live, fila_total], ignore_index=True)
     
-    # Formateo de cadenas para visualización HTML
     df_vis = df_live_tabla.copy()
     columnas_dinero = ['CAPITAL ACUMULADO', 'SALDO INICIAL', 'SALDO FINAL', 'GANANCIA / PERDIDA', 'DEPOSITOS', 'RETIROS', 'SALDO ACTUAL']
     for c in columnas_dinero:
@@ -787,7 +820,6 @@ if semana_seleccionada == "Semana Activa (En Curso)":
     df_vis['% PARTICIPACION'] = df_vis['% PARTICIPACION'].apply(lambda x: f"{x:.2f}%")
     df_vis['% PARTICIPACION FIN'] = df_vis['% PARTICIPACION FIN'].apply(lambda x: f"{x:.2f}%")
     
-    # Tarjetas Métricas Superiores
     st.markdown(
         f"""
         <div class="contenedor-metricas-global">
@@ -802,14 +834,12 @@ if semana_seleccionada == "Semana Activa (En Curso)":
     st.markdown(f"<h3 class='titulo-tabla-centrado'>Estadísticas Consolidadas - {semana_actual_label}</h3>", unsafe_allow_html=True)
     st.markdown(convertir_df_a_html_estilizado(df_vis, es_tabla_resumen=False), unsafe_allow_html=True)
     
-    # Construcción de Matriz Resumen Histórico Dinámico
     st.markdown("<h3 class='titulo-tabla-centrado'>Resumen de Rendimiento Histórico Acumulado</h3>", unsafe_allow_html=True)
     
     df_res_historico = pd.DataFrame(datos_apertura_nueva_semana)
     df_res_historico['INVERSIONISTA'] = df_res_historico['INVERSIONISTA'].str.strip().str.upper()
     df_res_historico = df_res_historico[['INVERSIONISTA', 'CAPITAL ACUMULADO']].rename(columns={'CAPITAL ACUMULADO': 'CAPITAL BASE HISTORICO'})
     
-    # Sincronización exacta de capital histórico para TAGUIRA en el acumulado
     df_res_historico.loc[df_res_historico['INVERSIONISTA'] == 'TAGUIRA', 'CAPITAL BASE HISTORICO'] = 1814.85
     
     df_saldo_actual_map = df_live[['INVERSIONISTA', 'SALDO ACTUAL']].rename(columns={'SALDO ACTUAL': 'SALDO ACTUALIZADO'})
@@ -837,14 +867,12 @@ if semana_seleccionada == "Semana Activa (En Curso)":
     
     st.markdown(convertir_df_a_html_estilizado(df_vis_resumen, es_tabla_resumen=True), unsafe_allow_html=True)
     
-    # Renderizado de Gráficos de Control de Métricas
     col_g1, col_g2 = st.columns(2)
     with col_g1:
         st.plotly_chart(construir_grafico_pie(df_live), use_container_width=True)
     with col_g2:
         st.plotly_chart(generar_grafico_barras_dinamico(total_s_fin), use_container_width=True)
         
-    # Motor de Despliegue de PDF Auditado
     st.markdown("---")
     st.markdown("<h4 style='text-align: center;'>Descarga de Reportes Oficiales</h4>", unsafe_allow_html=True)
     
@@ -861,7 +889,6 @@ if semana_seleccionada == "Semana Activa (En Curso)":
             )
 
 else:
-    # FILTRO HISTÓRICO AUDITADO (VISTA DE PERIODOS PASADOS)
     df_hist_filtrado = df_hist[df_hist['SEMANA'] == semana_seleccionada].copy()
     if not df_hist_filtrado.empty:
         total_s_ini = df_hist_filtrado['SALDO INICIAL'].sum()
