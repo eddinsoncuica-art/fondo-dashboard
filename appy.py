@@ -9,13 +9,38 @@ import base64
 from datetime import datetime, timedelta
 
 # =========================================================================
-# ⚙️ CONFIGURACIÓN DE LA PÁGINA (Tu logo de Opciones Financieras en la pestaña y links)
+# ⚙️ CONFIGURACIÓN DE LA PÁGINA E INYECCIÓN DE METADATOS PARA WHATSAPP
 # =========================================================================
 st.set_page_config(
     page_title="Gestión de Inversionistas", 
     layout="wide",
-    page_icon="Logo_Negro.png"  # Aquí asignamos el icono oficial de fondo negro
+    page_icon="Logo_Negro.png"  # Mantiene el icono para la pestaña del navegador
 )
+
+# Función para codificar el logo e inyectarlo en los Meta Tags de HTML
+def inyectar_meta_tags_whatsapp():
+    ruta_logo = "Logo_Negro.png"
+    if os.path.exists(ruta_logo):
+        with open(ruta_logo, "rb") as f:
+            datos_b64 = base64.b64encode(f.read()).decode()
+        
+        # HTML con las etiquetas Open Graph exactas que exige WhatsApp
+        meta_html = f"""
+        <head>
+            <meta property="og:title" content="Gestión de Inversionistas" />
+            <meta property="og:description" content="Panel de Control y Rendimiento del Fondo en Tiempo Real" />
+            <meta property="og:image" content="data:image/png;base64,{datos_b64}" />
+            <meta property="og:type" content="website" />
+            <meta property="og:image:type" content="image/png" />
+            <meta property="og:image:width" content="300" />
+            <meta property="og:image:height" content="300" />
+        </head>
+        """
+        # Inyectamos de forma invisible en la app de Streamlit
+        st.components.v1.html(meta_html, height=0, width=0)
+
+# Ejecutar la inyección de metadatos al arrancar la app
+inyectar_meta_tags_whatsapp()
 
 # =========================================================================
 # 📦 CAJA FUERTE Y LOGIN DE SEGURIDAD (EN LA PANTALLA PRINCIPAL)
