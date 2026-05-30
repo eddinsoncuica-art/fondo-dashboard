@@ -14,10 +14,9 @@ from datetime import datetime, timedelta
 st.set_page_config(
     page_title="Gestión de Inversionistas", 
     layout="wide",
-    page_icon="Logo_Negro.png"  # Mantiene el icono para la pestaña del navegador
+    page_icon="Logo_Negro.png"  # Icono para la pestaña del navegador
 )
 
-# Función para codificar el logo e inyectarlo en los Meta Tags de HTML
 def inyectar_meta_tags_whatsapp():
     ruta_logo = "Logo_Negro.png"
     if os.path.exists(ruta_logo):
@@ -36,7 +35,6 @@ def inyectar_meta_tags_whatsapp():
             <meta property="og:image:height" content="300" />
         </head>
         """
-        # Inyectamos de forma invisible en la app de Streamlit
         st.components.v1.html(meta_html, height=0, width=0)
 
 # Ejecutar la inyección de metadatos al arrancar la app
@@ -45,20 +43,17 @@ inyectar_meta_tags_whatsapp()
 # =========================================================================
 # 📦 CAJA FUERTE Y LOGIN DE SEGURIDAD (EN LA PANTALLA PRINCIPAL)
 # =========================================================================
-# Leer secretos guardados de forma segura en Streamlit Cloud
 AZURE_CONNECTION_STRING = st.secrets["AZURE_CONNECTION_STRING"]
 PASSWORD_ADMIN = st.secrets["ADMIN_PASSWORD"]
 PASSWORD_SOCIO = st.secrets["SOCIO_PASSWORD"]
 
-# Inicializar estados de sesión para el control de acceso
 if 'autenticado' not in st.session_state:
     st.session_state.autenticado = False
 if 'es_admin' not in st.session_state:
     st.session_state.es_admin = False
 
-# Si no está autenticado, mostramos la pantalla de login centralizada inmediatamente
 if not st.session_state.autenticado:
-    # Ocultar la barra lateral por completo durante el login para evitar distracciones
+    # Ocultar la barra lateral por completo durante el login
     st.markdown(
         """
         <style>
@@ -77,7 +72,6 @@ if not st.session_state.autenticado:
         st.markdown("<h2 style='text-align: center;'>🔒 Acceso Seguro al Fondo</h2>", unsafe_allow_html=True)
         st.markdown("<p style='text-align: center; color: #6c757d;'>Por favor, introduce tus credenciales para visualizar el estado del fondo en tiempo real.</p>", unsafe_allow_html=True)
         
-        # Formulario de inicio de sesión directo
         with st.form(key="login_form"):
             clave_ingresada = st.text_input("Introduzca una Contraseña Válida:", type="password")
             boton_aceptar = st.form_submit_button("Aceptar e Ingresar", use_container_width=True)
@@ -94,21 +88,18 @@ if not st.session_state.autenticado:
                 else:
                     st.error("❌ Contraseña incorrecta. Por favor, inténtalo de nuevo.")
                     
-        st.stop() # Bloquea el resto de la app hasta que pase el login
+        st.stop()
 
-# Recuperar el rol del usuario autenticado
 es_admin = st.session_state.es_admin
 
-# Mostrar indicador de modo en la barra lateral una vez adentro
 if es_admin:
-    st.sidebar.success("🔑 Modo: Administrador")
+    st.sidebar.success("🔑 Modo: Administrator")
 else:
     st.sidebar.success("🔑 Modo: Inversionista (Lectura)")
     st.sidebar.info("Visualizando rendimiento en tiempo real. Modo de edición deshabilitado.")
 
-
 # =========================================================================
-# 🎬 PANTALLA DE BIENVENIDA (8 SEGUNDOS EXACTOS - SOLO TRAS LOGUEARSE)
+# 🎬 PANTALLA DE BIENVENIDA (8 SEGUNDOS EXACTOS)
 # =========================================================================
 if 'bienvenida_completada' not in st.session_state:
 
@@ -183,9 +174,8 @@ if 'bienvenida_completada' not in st.session_state:
     st.session_state.bienvenida_completada = True
     st.rerun()
 
-
 # =========================================================================
-# 📊 CONTROL, RECONSTRUCCIÓN Y PREVENCIÓN DE ERRORES DE BASE DE DATOS
+# 📊 CONTROL Y GESTIÓN DE BASE DE DATOS (AZURE CLOUD & LOCAL BACKUP)
 # =========================================================================
 CONTAINER_NAME = "datos-fondo"
 
@@ -259,7 +249,7 @@ def guardar_en_storage(df, nombre_archivo):
         except Exception as e:
             st.sidebar.error(f"No se pudo respaldar en Azure: {e}")
 
-# Ejecución de carga y limpieza
+# Carga de datos estructurados
 df_inv = cargar_desde_storage('inversionistas.csv', datos_apertura_nueva_semana)
 df_hist = cargar_desde_storage('historico_semanal.csv', datos_historicos_defecto)
 
@@ -283,7 +273,7 @@ st.markdown(f"<h4 style='text-align: center; color: #6c757d; margin-top: 5px; fo
 st.markdown("<br>", unsafe_allow_html=True)
 
 # =========================================================================
-# 🎨 DISEÑO ESTILIZADO CSS
+# 🎨 DISEÑO ESTILIZADO CSS MARGINS Y TIPOGRAFÍAS
 # =========================================================================
 st.markdown(
     """
@@ -389,7 +379,7 @@ def formatear_moneda(valor):
     return f"-${abs(valor):,.2f}" if valor < 0 else f"${valor:,.2f}"
 
 # =========================================================================
-# 📊 GRÁFICOS INTERACTIVOS (PLOTLY)
+# 📊 MODELADO DE GRÁFICOS INTERACTIVOS (PLOTLY)
 # =========================================================================
 def construir_grafico_pie(df_fuente):
     df_filtrado_pie = df_fuente[df_fuente['INVERSIONISTA'] != 'TOTAL FONDO']
@@ -448,9 +438,8 @@ def convertir_df_a_html_estilizado(df_data, es_tabla_resumen=False):
         html_res += '</tr>'
     return html_res + '</tbody></table></div></div>'
 
-
 # =========================================================================
-# ⚖️ REPORTES EN PDF
+# ⚖️ REPORTES EN PDF CON MATPLOTLIB ENGINE
 # =========================================================================
 def generar_pdf_reporte(dataframe_vis, identificador_semana, df_live_num, df_final_res_live, titulo_dinamico, saldo_grafico_mayo):
     try:
@@ -660,9 +649,8 @@ def generar_pdf_reporte(dataframe_vis, identificador_semana, df_live_num, df_fin
 
     return bytes(pdf.output())
 
-
 # =========================================================================
-# ⚙️ BARRA LATERAL (CAMPOS DINÁMICOS EXCLUSIVOS ADMIN / FILTROS)
+# ⚙️ SIDEBAR DINÁMICA (CONTROLES DE GESTIÓN Y TRANSACCIONES)
 # =========================================================================
 if es_admin:
     st.sidebar.header("👥 Inversionistas (Admin)")
@@ -712,7 +700,6 @@ st.sidebar.header("📂 Históricos de Reportes")
 opciones_semana = ["Semana Activa (En Curso)"] + sorted(list(df_hist['SEMANA'].unique())) if not df_hist.empty else ["Semana Activa (En Curso)"]
 semana_seleccionada = st.sidebar.selectbox("Seleccione período a auditar:", opciones_semana)
 
-# Inicialización de diccionarios de movimientos en sesión
 if 'depositos_dict' not in st.session_state:
     st.session_state.depositos_dict = {nom: 0.0 for nom in df_inv['INVERSIONISTA'].values}
 if 'retiros_dict' not in st.session_state:
@@ -726,9 +713,8 @@ if es_admin:
         st.session_state.depositos_dict[socio_seleccionado] = st.number_input("Monto Depósito ($)", min_value=0.0, value=st.session_state.depositos_dict.get(socio_seleccionado, 0.0), format="%.2f", key=f"i_dep_{socio_seleccionado}")
         st.session_state.retiros_dict[socio_seleccionado] = st.number_input("Monto Retiro ($)", min_value=0.0, value=st.session_state.retiros_dict.get(socio_seleccionado, 0.0), format="%.2f", key=f"i_ret_{socio_seleccionado}")
 
-
 # =========================================================================
-# 🔥 OPERACIÓN DE CIERRE AUTOMÁTICO DE SEMANA (SOLO ADMINISTRADOR)
+# 🔥 OPERACIÓN DE CIERRE AUTOMÁTICO DE SEMANA (EXCLUSIVO ADMIN)
 # =========================================================================
 if es_admin:
     if st.sidebar.button("💾 Guardar y Cerrar Semana Definitivamente", use_container_width=True):
@@ -796,9 +782,8 @@ if es_admin:
         st.success("🔒 Semana cerrada de forma definitiva y base de datos guardada en la nube con éxito.")
         st.rerun()
 
-
 # =========================================================================
-# 📊 PROCESAMIENTO Y RENDERIZADO VISUAL (COMPARTIDO POR AMBOS MODOS)
+# 📊 PROCESAMIENTO Y RENDERIZADO VISUAL EN TIEMPO REAL
 # =========================================================================
 if semana_seleccionada == "Semana Activa (En Curso)":
     saldo_inicial_total = df_inv['SALDO INICIAL'].sum()
