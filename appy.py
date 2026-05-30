@@ -249,6 +249,43 @@ def guardar_en_storage(df, nombre_archivo):
         except Exception as e:
             st.sidebar.error(f"No se pudo respaldar en Azure: {e}")
 
+# --- NUEVAS FUNCIONES PARA PERSISTENCIA DEL SALDO TEMPORAL DIARIO ---
+def cargar_saldo_temporal():
+    nombre_archivo = 'saldo_temporal.csv'
+    if AZURE_CONNECTION_STRING and AZURE_CONNECTION_STRING.strip() != "":
+        try:
+            from azure.storage.blob import BlobServiceClient
+            blob_service_client = BlobServiceClient.from_connection_string(AZURE_CONNECTION_STRING)
+            blob_client = blob_service_client.get_blob_client(container=CONTAINER_NAME, blob=nombre_archivo)
+            if blob_client.exists():
+                descarga = blob_client.download_blob()
+                df_temp = pd.read_csv(io.BytesIO(descarga.readall()))
+                return float(df_temp['SALDO_TEMPORAL'].iloc[0])
+        except Exception:
+            pass
+            
+    if os.path.exists(nombre_archivo):
+        try:
+            df_temp = pd.read_csv(nombre_archivo)
+            return float(df_temp['SALDO_TEMPORAL'].iloc[0])
+        except:
+            return 0.0
+    return 0.0
+
+def guardar_saldo_temporal(valor):
+    nombre_archivo = 'saldo_temporal.csv'
+    df_temp = pd.DataFrame([{'SALDO_TEMPORAL': round(valor, 2)}])
+    df_temp.to_csv(nombre_archivo, index=False)
+    
+    if AZURE_CONNECTION_STRING and AZURE_CONNECTION_STRING.strip() != "":
+        try:
+            from azure.storage.blob import BlobServiceClient
+            blob_service_client = BlobServiceClient.from_connection_string(AZURE_CONNECTION_STRING)
+            blob_client = blob_service_client.get_blob_client(container=CONTAINER_NAME, blob=nombre_archivo)
+            blob_client.upload_blob(df_temp.to_csv(index=False), overwrite=True)
+        except Exception:
+            pass
+
 # Carga de datos estructurados
 df_inv = cargar_desde_storage('inversionistas.csv', datos_apertura_nueva_semana)
 df_hist = cargar_desde_storage('historico_semanal.csv', datos_historicos_defecto)
@@ -685,12 +722,23 @@ if es_admin:
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### **Saldo Real de la Cuenta**") 
+    
+    # Lógica de persistencia temporal conectada mediante callback
+    if 'saldo_temp_input' not in st.session_state:
+        st.session_state.saldo_temp_input = cargar_saldo_temporal()
+        
+    def actualizar_saldo_diario_callback():
+        guardar_saldo_temporal(st.session_state.nuevo_saldo_key)
+        st.session_state.saldo_temp_input = st.session_state.nuevo_saldo_key
+
     saldo_cierre_mercado = st.sidebar.number_input(
         "💵 Saldo de Cuenta", 
         label_visibility="collapsed", 
         min_value=0.0, 
-        value=0.0, 
-        format="%.2f"
+        value=st.session_state.saldo_temp_input, 
+        format="%.2f",
+        key="nuevo_saldo_key",
+        on_change=actualizar_saldo_diario_callback
     )
 else:
     saldo_cierre_mercado = 0.0
@@ -776,8 +824,11 @@ if es_admin:
         guardar_en_storage(df_inv, 'inversionistas.csv')
         guardar_en_storage(df_hist, 'historico_semanal.csv')
         
+        # Limpieza de estados y reseteo del saldo temporal intermedio para la nueva semana
         st.session_state.depositos_dict = {nom: 0.0 for nom in df_inv['INVERSIONISTA'].values}
         st.session_state.retiros_dict = {nom: 0.0 for nom in df_inv['INVERSIONISTA'].values}
+        guardar_saldo_temporal(0.0)
+        st.session_state.saldo_temp_input = 0.0
         
         st.success("🔒 Semana cerrada de forma definitiva y base de datos guardada en la nube con éxito.")
         st.rerun()
