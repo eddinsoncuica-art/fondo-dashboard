@@ -428,13 +428,12 @@ def construir_grafico_pie(df_fuente):
         color_discrete_sequence=px.colors.sequential.Tealgrn
     )
     
-    # Anclaje matemático estricto del título al centro real de la caja contenedora
     fig.update_layout(
         title={
             'text': "<b>Distribución Porcentual por Capital Histórico Aportado</b>",
-            'y': 0.95,               # Distancia vertical al techo del contenedor
-            'x': 0.5,                # Posición horizontal exacta al centro (0.0 a 1.0)
-            'xanchor': 'center',     # El punto de anclaje del título es su propio centro
+            'y': 0.95,               
+            'x': 0.5,                
+            'xanchor': 'center',     
             'yanchor': 'top'
         },
         font=dict(family="Arial", size=13),
@@ -445,9 +444,8 @@ def construir_grafico_pie(df_fuente):
             xanchor="left",      
             x=1.02
         ),
-        margin=dict(l=40, r=40, t=75, b=40) # Margen t=75 da aire al título corregido
+        margin=dict(l=40, r=40, t=75, b=40)
     )
-    # Bloquear la dona para que no se desplace lateralmente por la leyenda
     fig.update_traces(domain=dict(x=[0.05, 0.85], y=[0, 1]))
     return fig
 
@@ -681,9 +679,7 @@ def generar_pdf_reporte(dataframe_vis, identificador_semana, df_live_num, df_fin
             pdf.ln()
 
     try:
-        # ---- RÉPLICA EXACTA DE LA TORTA CON PALETA TEALGRN EN EL PDF ----
         fig1, ax1 = plt.subplots(figsize=(4.5, 1.8), dpi=250)
-        
         colores_replica_tealgrn = ['#99d8c9', '#41b6c4', '#1d91c0', '#225ea8', '#78c679', '#41ab5d', '#238443', '#005a32']
         
         nombres = df_live_num['INVERSIONISTA'].values
@@ -714,7 +710,6 @@ def generar_pdf_reporte(dataframe_vis, identificador_semana, df_live_num, df_fin
         plt.close(fig1)
         pdf.image(img_buf1, x=10, y=136, w=134)
         
-        # ---- SECCIÓN GRÁFICO DE BARRAS DEL PDF ----
         fig2, ax2 = plt.subplots(figsize=(4.5, 1.8), dpi=250)
         meses_list = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO']
         saldos_list = [55267.83, 62826.23, 59708.76, 75043.26, saldo_grafico_mayo]
@@ -816,7 +811,7 @@ if es_admin:
         st.session_state.retiros_dict[socio_seleccionado] = st.number_input("Monto Retiro ($)", min_value=0.0, value=st.session_state.retiros_dict.get(socio_seleccionado, 0.0), format="%.2f", key=f"i_ret_{socio_seleccionado}")
 
 # =========================================================================
-# 🔥 OPERACIÓN DE CIERRE AUTOMÁTICO DE SEMANA (EXCLUSIVO ADMIN)
+# 🔥 OPERACIÓN DE CIERRE AUTOMÁTACO DE SEMANA (EXCLUSIVO ADMIN)
 # =========================================================================
 if es_admin:
     if st.sidebar.button("💾 Guardar y Cerrar Semana Definitivamente", use_container_width=True):
@@ -987,11 +982,14 @@ if semana_seleccionada == "Semana Activa (En Curso)":
     
     st.markdown(convertir_df_a_html_estilizado(df_vis_resumen, es_tabla_resumen=True), unsafe_allow_html=True)
     
+    # ---------------------------------------------------------------------
+    # 🚫 CONFIGURACIÓN: 'displayModeBar': False REMOVE OPCIONES DE AMPLIAR/CAMARA
+    # ---------------------------------------------------------------------
     col_g1, col_g2 = st.columns(2)
     with col_g1:
-        st.plotly_chart(construir_grafico_pie(df_live), use_container_width=True)
+        st.plotly_chart(construir_grafico_pie(df_live), use_container_width=True, config={'displayModeBar': False})
     with col_g2:
-        st.plotly_chart(generar_grafico_barras_dinamico(total_s_fin), use_container_width=True)
+        st.plotly_chart(generar_grafico_barras_dinamico(total_s_fin), use_container_width=True, config={'displayModeBar': False})
         
     st.markdown("---")
     st.markdown("<h4 style='text-align: center;'>Descarga de Reportes Oficiales</h4>", unsafe_allow_html=True)
@@ -1051,11 +1049,14 @@ else:
         
         st.markdown(convertir_df_a_html_estilizado(df_vis_h, es_tabla_resumen=False), unsafe_allow_html=True)
         
+        # ---------------------------------------------------------------------
+        # 🚫 CONFIGURACIÓN HISTÓRICA: Ocultar barra flotante de opciones
+        # ---------------------------------------------------------------------
         col_g1, col_g2 = st.columns(2)
         with col_g1:
-            st.plotly_chart(construir_grafico_pie(df_hist_filtrado), use_container_width=True)
+            st.plotly_chart(construir_grafico_pie(df_hist_filtrado), use_container_width=True, config={'displayModeBar': False})
         with col_g2:
-            st.plotly_chart(generar_grafico_barras_dinamico(total_s_fin), use_container_width=True)
+            st.plotly_chart(generar_grafico_barras_dinamico(total_s_fin), use_container_width=True, config={'displayModeBar': False})
             
         st.markdown("---")
         st.markdown("<h4 style='text-align: center;'>Descarga de Reportes Históricos</h4>", unsafe_allow_html=True)
