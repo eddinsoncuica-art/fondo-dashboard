@@ -416,7 +416,7 @@ def formatear_moneda(valor):
     return f"-${abs(valor):,.2f}" if valor < 0 else f"${valor:,.2f}"
 
 # =========================================================================
-# 📊 GRÁFICOS INTERACTIVOS (PLOTLY) - TOTALMENTE CENTRADOS
+# 📊 GRÁFICOS INTERACTIVOS (PLOTLY) - TITULO Y CENTRADO ABSOLUTO
 # =========================================================================
 def construir_grafico_pie(df_fuente):
     df_filtrado_pie = df_fuente[df_fuente['INVERSIONISTA'] != 'TOTAL FONDO']
@@ -425,33 +425,48 @@ def construir_grafico_pie(df_fuente):
         df_filtrado_pie, 
         names='INVERSIONISTA', 
         values='CAPITAL ACUMULADO', 
-        title="<b>Distribución Porcentual por Capital Histórico Aportado</b>", 
         color_discrete_sequence=px.colors.sequential.Tealgrn
     )
     
-    # Forzar el centrado absoluto del título, dona y leyenda de la gráfica
+    # Anclaje matemático estricto del título al centro real de la caja contenedora
     fig.update_layout(
-        title_x=0.5,             # Centra el título horizontalmente
-        title_y=0.95,            # Lo desplaza ligeramente hacia arriba
+        title={
+            'text': "<b>Distribución Porcentual por Capital Histórico Aportado</b>",
+            'y': 0.95,               # Distancia vertical al techo del contenedor
+            'x': 0.5,                # Posición horizontal exacta al centro (0.0 a 1.0)
+            'xanchor': 'center',     # El punto de anclaje del título es su propio centro
+            'yanchor': 'top'
+        },
         font=dict(family="Arial", size=13),
         legend=dict(
-            orientation="v",     # Leyenda vertical
-            yanchor="middle",    # Centrada verticalmente al medio de la torta
+            orientation="v",     
+            yanchor="middle",    
             y=0.5,
-            xanchor="left",      # Posicionamiento perfecto a la derecha sin empujar el gráfico
-            x=1.05
+            xanchor="left",      
+            x=1.02
         ),
-        margin=dict(l=50, r=50, t=60, b=50)
+        margin=dict(l=40, r=40, t=75, b=40) # Margen t=75 da aire al título corregido
     )
-    # Ajusta el contenedor interno para que el círculo no baile hacia los lados
-    fig.update_traces(domain=dict(x=[0.1, 0.9], y=[0, 1]))
+    # Bloquear la dona para que no se desplace lateralmente por la leyenda
+    fig.update_traces(domain=dict(x=[0.05, 0.85], y=[0, 1]))
     return fig
 
 def generar_grafico_barras_dinamico(saldo_mes_curso):
     meses = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO (CURSO)']
     valores = [55267.83, 62826.23, 59708.76, 75043.26, saldo_mes_curso]
     fig = go.Figure(data=[go.Bar(x=meses, y=valores, text=[f"${v:,.2f}" for v in valores], textposition='inside', marker_color='#1d3557')])
-    fig.update_layout(title="<b>Evolución Histórica del Fondo (Cierre Mensual)</b>", title_x=0.5, template="plotly_white")
+    
+    fig.update_layout(
+        title={
+            'text': "<b>Evolución Histórica del Fondo (Cierre Mensual)</b>",
+            'y': 0.95,
+            'x': 0.5,
+            'xanchor': 'center',
+            'yanchor': 'top'
+        },
+        template="plotly_white",
+        margin=dict(l=40, r=40, t=75, b=40)
+    )
     return fig
 
 MAPEO_ENCABEZADOS_BR = {
@@ -669,7 +684,6 @@ def generar_pdf_reporte(dataframe_vis, identificador_semana, df_live_num, df_fin
         # ---- RÉPLICA EXACTA DE LA TORTA CON PALETA TEALGRN EN EL PDF ----
         fig1, ax1 = plt.subplots(figsize=(4.5, 1.8), dpi=250)
         
-        # Mapeo hexadecimal de la paleta Tealgrn para Matplotlib
         colores_replica_tealgrn = ['#99d8c9', '#41b6c4', '#1d91c0', '#225ea8', '#78c679', '#41ab5d', '#238443', '#005a32']
         
         nombres = df_live_num['INVERSIONISTA'].values
@@ -677,18 +691,16 @@ def generar_pdf_reporte(dataframe_vis, identificador_semana, df_live_num, df_fin
         if isinstance(valores[0], str):
             valores = [float(str(v).replace('$', '').replace(',', '')) for v in valores]
 
-        # Configuración limpia de etiquetas y porcentajes para evitar colisiones
         wedges, texts, autotexts = ax1.pie(
             valores, 
             labels=nombres, 
             autopct='%1.1f%%', 
             startangle=140, 
             colors=colores_replica_tealgrn[:len(valores)],
-            pctdistance=0.75,          # Coloca el porcentaje adentro elegantemente
+            pctdistance=0.75,          
             textprops=dict(fontsize=4.5, color="black")
         )
         
-        # Estilo en negrita para los números internos
         for autotext in autotexts:
             autotext.set_fontsize(4.0)
             autotext.set_weight('bold')
