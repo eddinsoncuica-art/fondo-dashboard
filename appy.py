@@ -678,31 +678,41 @@ def generar_pdf_reporte(dataframe_vis, identificador_semana, df_live_num, df_fin
             pdf.cell(24, 5, limpiar_texto(r_res['RETORNO (ROI)']), border=1, align='C', fill=es_total)
             pdf.ln()
 
+    # --- RECONSTRUCCIÓN IDÉNTICA DE LOS GRÁFICOS INTERACTIVOS EN EL PDF ---
     try:
-        fig1, ax1 = plt.subplots(figsize=(4.5, 1.8), dpi=250)
-        colores_replica_tealgrn = ['#99d8c9', '#41b6c4', '#1d91c0', '#225ea8', '#78c679', '#41ab5d', '#238443', '#005a32']
+        # Filtrar el total para evitar distorsión en las proporciones
+        df_pie_data = df_live_num[df_live_num['INVERSIONISTA'] != 'TOTAL FONDO'].copy()
         
-        nombres = df_live_num['INVERSIONISTA'].values
-        valores = df_live_num['CAPITAL ACUMULADO'].values
-        if isinstance(valores[0], str):
-            valores = [float(str(v).replace('$', '').replace(',', '')) for v in valores]
+        # Sanitizar valores numéricos de texto a float limpio
+        if df_pie_data['CAPITAL ACUMULADO'].dtype == object:
+            df_pie_data['CAPITAL ACUMULADO'] = df_pie_data['CAPITAL ACUMULADO'].astype(str).str.replace('$', '').str.replace(',', '').astype(float)
+        
+        nombres = df_pie_data['INVERSIONISTA'].values
+        valores = df_pie_data['CAPITAL ACUMULADO'].values
 
+        # Mapeo hexadecimal exacto de la paleta corporativa 'Tealgrn' de Plotly
+        colores_tealgrn = ['#b5e4b7', '#86d1a3', '#56be91', '#33a484', '#1f8779', '#18696b', '#184b5a', '#113043']
+        
+        fig1, ax1 = plt.subplots(figsize=(4.5, 1.8), dpi=250)
+        
+        # startangle=90 y counterclock=False fuerzan la misma distribución y rotación de Plotly
         wedges, texts, autotexts = ax1.pie(
             valores, 
             labels=nombres, 
             autopct='%1.1f%%', 
-            startangle=140, 
-            colors=colores_replica_tealgrn[:len(valores)],
-            pctdistance=0.75,          
-            textprops=dict(fontsize=4.5, color="black")
+            startangle=90, 
+            counterclock=False,
+            colors=colores_tealgrn[:len(valores)], 
+            textprops={'fontsize': 4.5, 'color': '#333333'}
         )
         
+        # Configurar formato de los porcentajes interiores
         for autotext in autotexts:
             autotext.set_fontsize(4.0)
             autotext.set_weight('bold')
-
+            
         ax1.axis('equal')
-        ax1.set_title("Distribución Porcentual por Capital Histórico Aportado", fontsize=6.0, fontweight='bold', pad=10)
+        ax1.set_title("Distribución Porcentual por Capital Histórico Aportado", fontsize=6.0, fontweight='bold', pad=10, color='#111111')
         
         img_buf1 = io.BytesIO()
         plt.savefig(img_buf1, format='png', bbox_inches='tight', transparent=True)
@@ -710,18 +720,33 @@ def generar_pdf_reporte(dataframe_vis, identificador_semana, df_live_num, df_fin
         plt.close(fig1)
         pdf.image(img_buf1, x=10, y=136, w=134)
         
+        # --- Gráfico de Barras Histórico ---
         fig2, ax2 = plt.subplots(figsize=(4.5, 1.8), dpi=250)
         meses_list = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO']
         saldos_list = [55267.83, 62826.23, 59708.76, 75043.26, saldo_grafico_mayo]
         
-        barras = ax2.bar(meses_list, saldos_list, color='#1d3557', width=0.42)
-        ax2.set_title("Evolucion Historica del Fondo (Cierre Mensual)", fontsize=6.0, fontweight='bold', pad=10)
-        ax2.tick_params(axis='both', labelsize=5.0)
-        ax2.grid(axis='y', linestyle='--', alpha=0.3)
+        # Color azul oscuro corporativo idéntico (#1d3557)
+        barras = ax2.bar(meses_list, saldos_list, color='#1d3557', width=0.45)
+        ax2.set_title("Evolución Histórica del Fondo (Cierre Mensual)", fontsize=6.0, fontweight='bold', pad=10, color='#111111')
+        ax2.tick_params(axis='both', labelsize=4.5, colors='#333333')
+        ax2.grid(axis='y', linestyle='--', alpha=0.2)
+        
+        # Eliminar bordes innecesarios para imitar el estilo minimalista de la app
+        for spine in ['top', 'right', 'left', 'bottom']:
+            ax2.spines[spine].set_visible(False)
         
         for bar in barras:
             yval = bar.get_height()
-            ax2.text(bar.get_x() + bar.get_width()/2.0, yval/2, f"${yval:,.2f}", ha='center', va='center', color='white', fontsize=4.0, fontweight='bold')
+            ax2.text(
+                bar.get_x() + bar.get_width()/2.0, 
+                yval/2, 
+                f"${yval:,.2f}", 
+                ha='center', 
+                va='center', 
+                color='white', 
+                fontsize=3.8, 
+                fontweight='bold'
+            )
             
         img_buf2 = io.BytesIO()
         plt.savefig(img_buf2, format='png', bbox_inches='tight', transparent=True)
@@ -811,7 +836,7 @@ if es_admin:
         st.session_state.retiros_dict[socio_seleccionado] = st.number_input("Monto Retiro ($)", min_value=0.0, value=st.session_state.retiros_dict.get(socio_seleccionado, 0.0), format="%.2f", key=f"i_ret_{socio_seleccionado}")
 
 # =========================================================================
-# 🔥 OPERACIÓN DE CIERRE AUTOMÁTACO DE SEMANA (EXCLUSIVO ADMIN)
+# 🔥 OPERACIÓN DE CIERRE AUTOMÁTICO DE SEMANA (EXCLUSIVO ADMIN)
 # =========================================================================
 if es_admin:
     if st.sidebar.button("💾 Guardar y Cerrar Semana Definitivamente", use_container_width=True):
