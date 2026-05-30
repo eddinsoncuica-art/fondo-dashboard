@@ -1,4 +1,6 @@
 streamlit
-plotly
 pandas
+plotly
 azure-storage-blob
+fpdf2
+matplotlib
