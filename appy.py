@@ -249,7 +249,7 @@ def guardar_en_storage(df, nombre_archivo):
         except Exception as e:
             st.sidebar.error(f"No se pudo respaldar en Azure: {e}")
 
-# --- NUEVAS FUNCIONES PARA PERSISTENCIA DEL SALDO TEMPORAL DIARIO ---
+# --- PERSISTENCIA INTERMEDIA DEL SALDO DIARIO ---
 def cargar_saldo_temporal():
     nombre_archivo = 'saldo_temporal.csv'
     if AZURE_CONNECTION_STRING and AZURE_CONNECTION_STRING.strip() != "":
@@ -416,12 +416,35 @@ def formatear_moneda(valor):
     return f"-${abs(valor):,.2f}" if valor < 0 else f"${valor:,.2f}"
 
 # =========================================================================
-# 📊 MODELADO DE GRÁFICOS INTERACTIVOS (PLOTLY)
+# 📊 GRÁFICOS INTERACTIVOS (PLOTLY) - TOTALMENTE CENTRADOS
 # =========================================================================
 def construir_grafico_pie(df_fuente):
     df_filtrado_pie = df_fuente[df_fuente['INVERSIONISTA'] != 'TOTAL FONDO']
-    fig = px.pie(df_filtrado_pie, names='INVERSIONISTA', values='CAPITAL ACUMULADO', title="<b>Distribución Porcentual por Capital Histórico Aportado</b>", color_discrete_sequence=px.colors.sequential.Tealgrn)
-    fig.update_layout(title_x=0.5, font=dict(family="Arial", size=13))
+    
+    fig = px.pie(
+        df_filtrado_pie, 
+        names='INVERSIONISTA', 
+        values='CAPITAL ACUMULADO', 
+        title="<b>Distribución Porcentual por Capital Histórico Aportado</b>", 
+        color_discrete_sequence=px.colors.sequential.Tealgrn
+    )
+    
+    # Forzar el centrado absoluto del título, dona y leyenda de la gráfica
+    fig.update_layout(
+        title_x=0.5,             # Centra el título horizontalmente
+        title_y=0.95,            # Lo desplaza ligeramente hacia arriba
+        font=dict(family="Arial", size=13),
+        legend=dict(
+            orientation="v",     # Leyenda vertical
+            yanchor="middle",    # Centrada verticalmente al medio de la torta
+            y=0.5,
+            xanchor="left",      # Posicionamiento perfecto a la derecha sin empujar el gráfico
+            x=1.05
+        ),
+        margin=dict(l=50, r=50, t=60, b=50)
+    )
+    # Ajusta el contenedor interno para que el círculo no baile hacia los lados
+    fig.update_traces(domain=dict(x=[0.1, 0.9], y=[0, 1]))
     return fig
 
 def generar_grafico_barras_dinamico(saldo_mes_curso):
@@ -476,7 +499,7 @@ def convertir_df_a_html_estilizado(df_data, es_tabla_resumen=False):
     return html_res + '</tbody></table></div></div>'
 
 # =========================================================================
-# ⚖️ REPORTES EN PDF CON MATPLOTLIB ENGINE
+# ⚖️ REPORTES EN PDF CON MATPLOTLIB (RÉPLICA IDÉNTICA DE COLORES)
 # =========================================================================
 def generar_pdf_reporte(dataframe_vis, identificador_semana, df_live_num, df_final_res_live, titulo_dinamico, saldo_grafico_mayo):
     try:
@@ -643,29 +666,49 @@ def generar_pdf_reporte(dataframe_vis, identificador_semana, df_live_num, df_fin
             pdf.ln()
 
     try:
+        # ---- RÉPLICA EXACTA DE LA TORTA CON PALETA TEALGRN EN EL PDF ----
         fig1, ax1 = plt.subplots(figsize=(4.5, 1.8), dpi=250)
-        colores = ['#4ea8de', '#56cfe1', '#64dfdf', '#72efdd', '#80ffdb', '#7400b8', '#6930c3', '#5e60ce']
+        
+        # Mapeo hexadecimal de la paleta Tealgrn para Matplotlib
+        colores_replica_tealgrn = ['#99d8c9', '#41b6c4', '#1d91c0', '#225ea8', '#78c679', '#41ab5d', '#238443', '#005a32']
+        
         nombres = df_live_num['INVERSIONISTA'].values
         valores = df_live_num['CAPITAL ACUMULADO'].values
         if isinstance(valores[0], str):
             valores = [float(str(v).replace('$', '').replace(',', '')) for v in valores]
 
-        ax1.pie(valores, labels=nombres, autopct='%1.1f%%', startangle=90, colors=colores[:len(valores)], textprops={'fontsize': 5.0})
+        # Configuración limpia de etiquetas y porcentajes para evitar colisiones
+        wedges, texts, autotexts = ax1.pie(
+            valores, 
+            labels=nombres, 
+            autopct='%1.1f%%', 
+            startangle=140, 
+            colors=colores_replica_tealgrn[:len(valores)],
+            pctdistance=0.75,          # Coloca el porcentaje adentro elegantemente
+            textprops=dict(fontsize=4.5, color="black")
+        )
+        
+        # Estilo en negrita para los números internos
+        for autotext in autotexts:
+            autotext.set_fontsize(4.0)
+            autotext.set_weight('bold')
+
         ax1.axis('equal')
-        ax1.set_title("Distribucion Porcentual por Capital Aportado", fontsize=6.5, fontweight='bold', pad=15)
+        ax1.set_title("Distribución Porcentual por Capital Histórico Aportado", fontsize=6.0, fontweight='bold', pad=10)
         
         img_buf1 = io.BytesIO()
-        plt.savefig(img_buf1, format='png', bbox_inches='tight')
+        plt.savefig(img_buf1, format='png', bbox_inches='tight', transparent=True)
         img_buf1.seek(0)
         plt.close(fig1)
         pdf.image(img_buf1, x=10, y=136, w=134)
         
+        # ---- SECCIÓN GRÁFICO DE BARRAS DEL PDF ----
         fig2, ax2 = plt.subplots(figsize=(4.5, 1.8), dpi=250)
         meses_list = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO']
         saldos_list = [55267.83, 62826.23, 59708.76, 75043.26, saldo_grafico_mayo]
         
-        barras = ax2.bar(meses_list, saldos_list, color='#2a6f97', width=0.42)
-        ax2.set_title("Evolucion Historica del Fondo (Cierre Mensual)", fontsize=6.5, fontweight='bold', pad=15)
+        barras = ax2.bar(meses_list, saldos_list, color='#1d3557', width=0.42)
+        ax2.set_title("Evolucion Historica del Fondo (Cierre Mensual)", fontsize=6.0, fontweight='bold', pad=10)
         ax2.tick_params(axis='both', labelsize=5.0)
         ax2.grid(axis='y', linestyle='--', alpha=0.3)
         
@@ -674,7 +717,7 @@ def generar_pdf_reporte(dataframe_vis, identificador_semana, df_live_num, df_fin
             ax2.text(bar.get_x() + bar.get_width()/2.0, yval/2, f"${yval:,.2f}", ha='center', va='center', color='white', fontsize=4.0, fontweight='bold')
             
         img_buf2 = io.BytesIO()
-        plt.savefig(img_buf2, format='png', bbox_inches='tight')
+        plt.savefig(img_buf2, format='png', bbox_inches='tight', transparent=True)
         img_buf2.seek(0)
         plt.close(fig2)
         pdf.image(img_buf2, x=152, y=136, w=134)
@@ -723,7 +766,6 @@ if es_admin:
     st.sidebar.markdown("---")
     st.sidebar.markdown("### **Saldo Real de la Cuenta**") 
     
-    # Lógica de persistencia temporal conectada mediante callback
     if 'saldo_temp_input' not in st.session_state:
         st.session_state.saldo_temp_input = cargar_saldo_temporal()
         
@@ -824,7 +866,6 @@ if es_admin:
         guardar_en_storage(df_inv, 'inversionistas.csv')
         guardar_en_storage(df_hist, 'historico_semanal.csv')
         
-        # Limpieza de estados y reseteo del saldo temporal intermedio para la nueva semana
         st.session_state.depositos_dict = {nom: 0.0 for nom in df_inv['INVERSIONISTA'].values}
         st.session_state.retiros_dict = {nom: 0.0 for nom in df_inv['INVERSIONISTA'].values}
         guardar_saldo_temporal(0.0)
